@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>7×7 Word Grid — Atomic Word Tiles (Word Score Breakdown)</title>
+<style>
+  html, body {height:100%;margin:0;}
+  body {background:#0f1115;color:#e9ecf1;font-family:system-ui,Segoe UI,Roboto,Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:0.5rem;overflow:hidden;}
+  h1 {margin:0.5rem 0;font-size:1.5rem;flex-shrink:0;}
+  .top {display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;flex-shrink:0;}
+  .badge {background:#1b2131;border:1px solid #2a3146;padding:2px 8px;border-radius:999px;color:#9aa3b2;font-size:.85rem}
+  .board-wrapper {flex-grow:1;display:flex;align-items:center;justify-content:center;width:100%;max-height:calc(100% - 160px);}
+  .board {display:grid;grid-template-columns:repeat(7,1fr);gap:8px;width:100%;max-width:700px;height:100%;max-height:700px;aspect-ratio:1;touch-action:none;}
+  .tile {background:#222639;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:bold;position:relative;user-select:none;overflow:hidden;text-align:center;line-height:1.1;}
+  .val {position:absolute;bottom:4px;right:6px;font-size:.75rem;color:#aaa;}
+  .tile.selected{background:#2d6cdf;}
+  .tile.valid{background:#28a745;}
+  .tile.invalid{background:#c1272d;}
+  .controls {display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:0.5rem;flex-shrink:0;}
+  button {padding:8px 12px;border:none;border-radius:6px;background:#213056;color:white;cursor:pointer;}
+  button:disabled{opacity:0.5;cursor:not-allowed;}
+  #overlay {display:none;position:fixed;inset:0;background:rgba(15,17,23,0.95);color:#fff;align-items:center;justify-content:center;flex-direction:column;text-align:center;overflow:auto;padding:1rem;}
+  #overlay ul{list-style:none;padding:0;max-height:60vh;overflow:auto;text-align:left;}
+  #overlay li{margin:2px 0;}
+  #hintDisplay {margin-top:8px;font-size:.9rem;color:#9aa3b2;}
+  #currentWord {margin-top:8px;font-size:.95rem;color:#7aa2ff;white-space:pre-line;}
+</style>
+</head>
+<body>
+  <h1>7×7 Word Grid — Atomic Word Tiles</h1>
+  <div class="top">
+    <div id="score" class="badge">Score: 0</div>
+    <div id="dictStatus" class="badge">Dict: loading…</div>
+    <div id="hintDisplay" class="badge">Hint: —</div>
+    <div id="shuffleCount" class="badge">Shuffles left: 3</div>
+    <div id="bestWord" class="badge">Best word: —</div>
+  </div>
+  <div id="currentWord">Last word: —</div>
+  <div class="board-wrapper">
+    <div class="board" id="board" aria-label="7 by 7 letter grid"></div>
+  </div>
+  <div class="controls">
+    <button id="shuffle">Shuffle</button>
+    <button id="hint">Hint</button>
+    <button id="giveup">I give up</button>
+  </div>
+  <div id="overlay" role="dialog" aria-modal="true" aria-labelledby="overlayTitle">
+    <h2 id="overlayTitle">Available Words</h2>
+    <ul id="wordList"></ul>
+    <p id="finalScore"></p>
+    <button id="restart">Restart</button>
+  </div>
+<script>
+// ----- State & DOM -----
+const SIZE=7,MIN_WORD_LEN=2,MAX_SHUFFLES=3;
+let score=0,grid=[],shuffleLeft=MAX_SHUFFLES,bestWordScore=0,bestWordText='';
+const board=document.getElementById('board'),
+  scoreEl=document.getElementById('score'),
+  dictStatus=document.getElementById('dictStatus'),
+  hintDisplay=document.getElementById('hintDisplay'),
+  shuffleCount=document.getElementById('shuffleCount'),
+  bestWordEl=document.getElementById('bestWord'),
+  overlay=document.getElementById('overlay'),
+  wordList=document.getElementById('wordList'),
+  finalScore=document.getElementById('finalScore'),
+  restartBtn=document.getElementById('restart'),
+  hintBtn=document.getElementById('hint'),
+  shuffleBtn=document.getElementById('shuffle'),
+  giveUpBtn=document.getElementById('giveup'),
+  currentWordDisplay=document.getElementById('currentWord');
+
+let dictReady=false;let dict=new Set(['AT','TO','TEA','EAT','ATE','LATE','TONE','STONE','RATE','RATES','STARE','START','STAR','TAR','RAT','ONE','ONES','ALONE']);
+const DICT_URL='https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt';
+
+const LETTERS=[['E',12,1],['A',9,1],['I',9,1],['O',8,1],['N',6,1],['R',6,1],['T',6,1],['L',4,1],['S',4,1],['U',4,1],['D',4,2],['G',3,2],['B',2,3],['C',2,3],['M',2,3],['P',2,3],['F',2,4],['H',2,4],['V',2,4],['W',2,4],['Y',2,4],['K',1,5],['J',1,8],['X',1,8],['Q',1,10],['Z',1,10]];
+const WEIGHT_SUM=LETTERS.reduce((a,b)=>a+b[1],0);
+function randTile(){let r=Math.random()*WEIGHT_SUM;for(const[l,w,v]of LETTERS){if(r<w)return{word:l,val:v};r-=w;}return{word:'E',val:1};}
+
+// ----- Dictionary -----
+async function loadDictionary(){
+  dictStatus.textContent='Dict: loading…';
+  try{
+    const res=await fetch(DICT_URL);
+    const txt=await res.text();
+    const words=txt.split(/\r?\n/).map(w=>w.trim()).filter(w=>w.length>=MIN_WORD_LEN&&w.length<=16);
+    dict=new Set(words.map(w=>w.toUpperCase()));
+    dictReady=true;
+    dictStatus.textContent=`Dict: ready (${words.length.toLocaleString()})`;
+  }catch(err){
+    dictReady=true;dictStatus.textContent='Dict: fallback';
+  }
+}
+
+// ----- Init / Render -----
+function init(){
+  grid=Array.from({length:SIZE},()=>Array.from({length:SIZE},()=>randTile()));
+  shuffleLeft=MAX_SHUFFLES; bestWordScore=0; bestWordText='';
+  render(); wirePointerEvents(); wireButtons(); loadDictionary();
+  hintDisplay.textContent='Hint: —';
+  shuffleCount.textContent='Shuffles left: '+shuffleLeft;
+  bestWordEl.textContent='Best word: —';
+  shuffleBtn.disabled=false;
+  currentWordDisplay.textContent='Current word: —';
+}
+
+function calcFontSize(word){
+  const len=word.length,base=34;
+  if(len<=3)return base; if(len<=6)return base-6; if(len<=9)return base-10; if(len<=12)return base-14; return base-(len-12)*2;
+}
+
+function render(){
+  board.innerHTML='';
+  const boardSize=board.clientWidth; const tileSize=(boardSize-(8*(SIZE-1)))/SIZE;
+  for(let y=0;y<SIZE;y++){
+    for(let x=0;x<SIZE;x++){
+      const t=grid[y][x];
+      const d=document.createElement('div');
+      d.className='tile'; d.dataset.x=x; d.dataset.y=y;
+      d.style.fontSize=calcFontSize(t.word)+'px';
+      d.style.width=tileSize+'px'; d.style.height=tileSize+'px';
+      d.innerHTML=`${t.word}<span class='val'>${t.val}</span>`;
+      board.appendChild(d);
+    }
+  }
+}
+
+// ----- Input / Drag -----
+let dragging=false,axis=null,path=[],activePointerId=null;
+function wirePointerEvents(){
+  board.addEventListener('pointerdown',e=>{
+    const t=tileFromPoint(e.clientX,e.clientY); if(!t) return; e.preventDefault();
+    activePointerId=e.pointerId; dragging=true; axis=null; path=[t];
+    updateCurrentWord(); t.el.classList.add('selected'); board.setPointerCapture?.(e.pointerId);
+  });
+  window.addEventListener('pointermove',e=>{
+    if(!dragging||e.pointerId!==activePointerId) return;
+    const t=tileFromPoint(e.clientX,e.clientY); if(!t) return;
+    const last=path[path.length-1];
+    if((t.x===last.x&&t.y===last.y)||path.some(p=>p.x===t.x&&p.y===t.y)) return;
+    if(axis===null){ if(t.x===last.x) axis='v'; else if(t.y===last.y) axis='h'; else return; }
+    if(axis==='h'&&t.y!==last.y) return; if(axis==='v'&&t.x!==last.x) return;
+    if(Math.abs(t.x-last.x)+Math.abs(t.y-last.y)!==1) return;
+    path.push(t); updateCurrentWord(); t.el.classList.add('selected');
+  });
+  window.addEventListener('pointerup',e=>{
+    if(!dragging||e.pointerId!==activePointerId) return;
+    dragging=false; activePointerId=null; finishWord();
+  });
+}
+
+function updateCurrentWord(){
+  // Only show live score when the current path forms a valid playable word
+  if(path.length < MIN_WORD_LEN || !dictReady) return;
+  const word = path.map(p=>p.tile.word).join('').toUpperCase();
+  if(!dict.has(word)) return; // do not update for invalid words in progress
+  const baseVal = path.reduce((s,p)=>s+p.tile.val,0);
+  const val = baseVal * path.length;
+  currentWordDisplay.textContent = `Current word: ${word}\n${path.map(p=>p.tile.val).join(' + ')} = ${baseVal}; ${baseVal} × ${path.length} = ${val} pts`;
+}
+
+function tileFromPoint(cx,cy){ const el=document.elementFromPoint(cx,cy); return getT(el); }
+function getT(el){ const e=el?.closest?.('.tile'); if(!e) return null; const x=+e.dataset.x,y=+e.dataset.y; return {x,y,el:e,tile:grid[y][x]}; }
+
+// ----- Word completion -----
+function finishWord(){
+  if(path.length<MIN_WORD_LEN){ resetSel(); updateCurrentWord(); return; }
+  const word=path.map(p=>String(p.tile.word||'')).join('').toUpperCase();
+  const isWord=dictReady&&dict.has(word);
+  if(isWord){
+    const baseVal=path.reduce((s,p)=>s+p.tile.val,0); const add=baseVal*path.length;
+    const vals=path.map(p=>p.tile.val); const tiles=path.length;
+    score+=add; scoreEl.textContent='Score: '+score;
+    mergeWord(word,add,baseVal,vals,tiles);
+  } else {
+    flash(path,'invalid'); resetSel();
+  }
+}
+
+function mergeWord(word,newVal,baseVal,vals,tiles){
+  const end=path[path.length-1]; end.tile.word=word; end.tile.val=baseVal; // tile shows sum only
+  for(let i=0;i<path.length-1;i++){ const {x,y}=path[i]; grid[y][x]=randTile(); }
+  render(); flash([tileByCoord(end.x,end.y)],'valid'); resetSel();
+  hintDisplay.textContent='Hint: —';
+  currentWordDisplay.textContent=`Last word: ${word}\n${vals.join(' + ')} = ${baseVal}; ${baseVal} × ${tiles} = ${newVal} pts`;
+  if(newVal>bestWordScore){ bestWordScore=newVal; bestWordText=word; bestWordEl.textContent=`Best word: ${bestWordText} (${bestWordScore})`; }
+}
+
+function tileByCoord(x,y){ const el=board.querySelector(`.tile[data-x="${x}"][data-y="${y}"]`); return {x,y,el,tile:grid[y][x]}; }
+function flash(cells,cls){ cells.forEach(p=>p?.el?.classList.add(cls)); setTimeout(()=>cells.forEach(p=>p?.el?.classList.remove(cls)),300); }
+function resetSel(){ path.forEach(p=>p?.el?.classList.remove('selected')); path=[]; axis=null; }
+
+// ----- Buttons / Hint & Shuffle / Overlay -----
+function wireButtons(){
+  hintBtn.onclick=()=>{
+    let count=0;
+    for(let y=0;y<SIZE;y++) count+=countLineWords(grid[y].map(t=>t.word.toUpperCase()));
+    for(let x=0;x<SIZE;x++){ const col=[]; for(let y=0;y<SIZE;y++) col.push(grid[y][x].word.toUpperCase()); count+=countLineWords(col); }
+    hintDisplay.textContent='Words available: '+count;
+  };
+  shuffleBtn.onclick=()=>{
+    if(shuffleLeft<=0) return; shuffleLeft--; shuffleCount.textContent='Shuffles left: '+shuffleLeft; if(shuffleLeft===0) shuffleBtn.disabled=true;
+    const flat=grid.flat(); for(let i=flat.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [flat[i],flat[j]]=[flat[j],flat[i]]; }
+    for(let i=0,k=0;i<SIZE;i++) for(let j=0;j<SIZE;j++,k++) grid[i][j]=flat[k];
+    render(); hintDisplay.textContent='Hint: —';
+  };
+  giveUpBtn.onclick=()=>{
+    overlay.style.display='flex'; wordList.innerHTML=''; const words=findAllWords();
+    words.forEach(w=>{ const li=document.createElement('li'); li.textContent=w; wordList.appendChild(li); });
+    finalScore.textContent='Final score: '+score+' | Total words: '+words.length;
+  };
+  restartBtn.onclick=()=>{ overlay.style.display='none'; score=0; scoreEl.textContent='Score: 0'; init(); };
+}
+
+function countLineWords(arr){ let c=0; const n=arr.length; for(let i=0;i<n;i++){ let s=''; let tiles=0; for(let j=i;j<n;j++){ s+=arr[j]; tiles++; if(tiles>=2 && s.length>=MIN_WORD_LEN && dict.has(s)) c++; } } return c; }
+function findAllWords(){ let found=[]; for(let y=0;y<SIZE;y++){ found.push(...scanLine(grid[y].map(t=>t.word.toUpperCase()))); } for(let x=0;x<SIZE;x++){ const col=[]; for(let y=0;y<SIZE;y++) col.push(grid[y][x].word.toUpperCase()); found.push(...scanLine(col)); } return [...new Set(found)].sort(); }
+function scanLine(arr){ let res=[]; const n=arr.length; for(let i=0;i<n;i++){ let s=''; let tiles=0; for(let j=i;j<n;j++){ s+=arr[j]; tiles++; if(tiles>=2 && s.length>=MIN_WORD_LEN && dict.has(s)) res.push(s); } } return res; }
+
+// ----- Simple runtime sanity checks (non-intrusive) -----
+console.assert(document.getElementById('bestWord'), 'bestWord badge missing');
+console.assert(typeof mergeWord==='function', 'mergeWord not defined');
+
+init();
+</script>
+</body>
+</html>
