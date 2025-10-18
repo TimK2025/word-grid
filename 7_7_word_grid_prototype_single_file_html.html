@@ -107,8 +107,9 @@ function init(){
 
 function calcFontSize(word){
   const boardSize=board.clientWidth; const tileSize=(boardSize-(8*(SIZE-1)))/SIZE;
+  const remInPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
   // const len=word.length,base=34;
-  const len=word.length,base=tileSize;
+  const len=word.length,base=tileSize-(remInPx*2);
   // if(len<=3)return base; if(len<=6)return (base-6)/2; if(len<=9)return (base-10)/2; if(len<=12)return (base-14)/2; return base-(len-12)*2;
   return base/word.length;
 }
