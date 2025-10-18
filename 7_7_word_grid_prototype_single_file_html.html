@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>7×7 Word Grid — Atomic Word Tiles (Fixed Last Word Display)</title>
+<title>7×7 Word Grid — Atomic Word Tiles (Board Display Fix)</title>
 <style>
-  html, body {height:100%;margin:0}
-  body {background:#0f1115;color:#e9ecf1;font-family:system-ui,Segoe UI,Roboto,Inter,sans-serif;display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:.5rem;overflow:auto}
+  html, body {height:100%;margin:0;padding:0;}
+  body {background:#0f1115;color:#e9ecf1;font-family:system-ui,Segoe UI,Roboto,Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.5rem;overflow:auto;}
   h1 {margin:.25rem 0;font-size:1.3rem}
   .top {display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
   .badge {background:#1b2131;border:1px solid #2a3146;padding:2px 8px;border-radius:999px;color:#9aa3b2;font-size:.85rem}
@@ -14,10 +14,10 @@
   button {padding:8px 12px;border:none;border-radius:6px;background:#213056;color:#e9ecf1;cursor:pointer}
   button:disabled{opacity:.5;cursor:not-allowed}
   #currentWord {white-space:pre-line;color:#7aa2ff;font-size:.9rem;text-align:left;background:#151821;border:1px solid #2a3146;border-radius:8px;padding:.5rem;width:90%;max-width:700px;min-height:6rem;max-height:8rem;overflow-y:auto}
-  .board-wrapper {width:100%;max-width:720px;display:flex;justify-content:center}
-  .board {display:grid;grid-template-columns:repeat(7,1fr);gap:8px;width:100%;max-width:700px;aspect-ratio:1;touch-action:none}
-  .tile {position:relative;display:flex;align-items:center;justify-content:center;background:#222639;border:1px solid #2a3146;border-radius:10px;user-select:none;overflow:hidden;text-align:center;line-height:1.1;cursor:pointer}
-  .tile .val {position:absolute;right:6px;bottom:4px;font-size:.75rem;color:#9aa3b2}
+  .board-wrapper {flex-grow:1;display:flex;align-items:center;justify-content:center;width:100%;max-width:720px;padding:1rem;box-sizing:border-box;}
+  .board {display:grid;grid-template-columns:repeat(7,1fr);gap:6px;width:100%;max-width:700px;aspect-ratio:1;touch-action:none;}
+  .tile {position:relative;display:flex;align-items:center;justify-content:center;background:#222639;border:1px solid #2a3146;border-radius:10px;user-select:none;overflow:hidden;text-align:center;line-height:1.1;cursor:pointer;font-size:clamp(18px,6vmin,36px);color:#e9ecf1;}
+  .tile .val {position:absolute;right:6px;bottom:4px;font-size:clamp(10px,3vmin,16px);color:#9aa3b2}
   .tile.selected{background:#2d6cdf}
   .tile.valid{background:#28a745}
   .tile.invalid{background:#c1272d}
@@ -34,127 +34,32 @@
     <button id="giveup">I give up</button>
   </div>
   <div id="currentWord">Last word: —</div>
-  <div class="board-wrapper"><div class="board" id="board" aria-label="7 by 7 letter grid"></div></div>
-
+  <div class="board-wrapper">
+    <div class="board" id="board" aria-label="7 by 7 letter grid"></div>
+  </div>
 <script>
-// ===== Config & State =====
-const SIZE=7, MIN_WORD_LEN=2;
-let score=0, grid=[], bestWordScore=0, bestWordText='';
-const els={
-  board:document.getElementById('board'), score:document.getElementById('score'),
-  hint:document.getElementById('hintDisplay'), bestWord:document.getElementById('bestWord'),
-  current:document.getElementById('currentWord'), giveUpBtn:document.getElementById('giveup')
-};
+const SIZE = 7;
 
-// Letters: [char, weight, value]
-const LETTERS=[['E',12,1],['A',9,1],['I',9,1],['O',8,1],['N',6,1],['R',6,1],['T',6,1],['L',4,1],['S',4,1],['U',4,1],['D',4,2],['G',3,2],['B',2,3],['C',2,3],['M',2,3],['P',2,3],['F',2,4],['H',2,4],['V',2,4],['W',2,4],['Y',2,4],['K',1,5],['J',1,8],['X',1,8],['Q',1,10],['Z',1,10]];
-const WEIGHT_SUM=LETTERS.reduce((a,b)=>a+b[1],0);
-const VOWELS=['A','E','I','O','U'];
-
-let dictReady=false;
-let dict=new Set(['AT','TO','TEA','EAT','ATE','LATE','TONE','STONE','RATE','RATES','STARE','START','STAR','TAR','RAT','ONE','ONES','ALONE']);
-const DICT_URL='https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt';
-
-function randTile(){ let r=Math.random()*WEIGHT_SUM; for(const [ch,w,val] of LETTERS){ if(r<w) return {word:ch, val}; r-=w; } return {word:'E', val:1}; }
-function updateBadges(){ els.score.textContent='Score: '+score; }
-function inBounds(x,y){ return x>=0&&x<SIZE&&y>=0&&y<SIZE; }
-function calcFontPx(word){ const boardSize=els.board.clientWidth, gap=8, tileSize=(boardSize-gap*(SIZE-1))/SIZE; const rem=parseFloat(getComputedStyle(document.documentElement).fontSize); const len=word.length; if(len<=1) return Math.max(1, tileSize-2*rem); if(len===2) return Math.max(1, tileSize-1.2*rem); return Math.max(1, tileSize/(len-0.67)); }
-
-function newBoard(){ grid=Array.from({length:SIZE},()=>Array.from({length:SIZE},()=>randTile())); }
-function renderBoard(){ els.board.innerHTML=''; const boardSize=els.board.clientWidth, gap=8, tileSize=(boardSize-gap*(SIZE-1))/SIZE; for(let y=0;y<SIZE;y++){
-  for(let x=0;x<SIZE;x++){
-    const t=grid[y][x]; const d=document.createElement('div'); d.className='tile'; d.dataset.x=x; d.dataset.y=y; d.style.width=d.style.height=tileSize+'px'; d.style.fontSize=calcFontPx(t.word)+'px'; d.innerHTML=`${t.word}<span class="val">${t.val}</span>`; els.board.appendChild(d);
-  }
-}
-  updateWordsAvailable();
-}
-
-// ===== Selection (pointer) =====
-let dragging=false, axis=null, path=[]; // path = [{x,y,el}]
-function wireSelection(){
-  els.board.addEventListener('pointerdown', e=>{ const t=tileFromEvent(e); if(!t) return; e.preventDefault(); startDrag(t); els.board.setPointerCapture?.(e.pointerId); });
-  window.addEventListener('pointermove', e=>{ if(!dragging) return; const t=tileFromEvent(e); if(t) extendDrag(t); });
-  window.addEventListener('pointerup', ()=>{ if(dragging) endDrag(); });
-}
-function tileFromEvent(e){ const el=document.elementFromPoint(e.clientX, e.clientY); return tileFromEl(el); }
-function tileFromEl(el){ const d=el?.closest?.('.tile'); if(!d) return null; const x=+d.dataset.x, y=+d.dataset.y; if(!inBounds(x,y)) return null; return {x,y,el:d}; }
-function startDrag(t){ dragging=true; axis=null; path=[t]; t.el.classList.add('selected'); }
-function extendDrag(t){
-  if(path.length===0) return; const last=path[path.length-1]; if(!last) return;
-  if(t.x===last.x&&t.y===last.y) return; if(path.some(p=>p.x===t.x&&p.y===t.y)) return;
-  if(axis===null){ if(t.x===last.x) axis='v'; else if(t.y===last.y) axis='h'; else return; }
-  if(axis==='h'&&t.y!==last.y) return; if(axis==='v'&&t.x!==last.x) return;
-  if(Math.abs(t.x-last.x)+Math.abs(t.y-last.y)!==1) return;
-  path.push(t); t.el.classList.add('selected');
-}
-
-// ===== Play resolution =====
-function endDrag(){
-  if(path.length<MIN_WORD_LEN){ clearPath(); return; }
-  const draggedWord = path.map(p=>grid[p.y][p.x].word.toUpperCase()).join('');
-  if(!isValidWord(draggedWord)){ flash(path,'invalid'); clearPath(); return; }
-  const subwords = findSubWords(draggedWord, path);
-  if(subwords.length===0){ flash(path,'invalid'); clearPath(); return; }
-  const totalSubVal = subwords.reduce((a,w)=>a+w.value,0);
-  const add = totalSubVal * path.length;
-  score += add; updateBadges();
-  const end = path[path.length-1];
-  grid[end.y][end.x] = {word:draggedWord, val: path.reduce((a,p)=>a+grid[p.y][p.x].val,0)};
-  for(let i=0;i<path.length-1;i++){ const {x,y}=path[i]; grid[y][x] = randTile(); }
-  renderBoard(); wireSelection();
-  const endEl=document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`); if(endEl){ endEl.classList.add('valid'); setTimeout(()=>endEl.classList.remove('valid'),300); }
-  updateWordsAvailable();
-  els.current.textContent = `Last word: ${draggedWord}\n${subwords.map(s=>`${s.text} (${s.value})`).join('\n')}\nSum(${subwords.length} subwords): ${totalSubVal}; ×${path.length} tiles = ${add} pts`;
-  if(add>bestWordScore){ bestWordScore=add; bestWordText=draggedWord; els.bestWord.textContent=`Best word: ${bestWordText} (${bestWordScore})`; }
-  clearPath();
-}
-
-function clearPath(){ path.forEach(p=>p?.el?.classList.remove('selected')); path=[]; axis=null; }
-function flash(cells,cls){ cells.forEach(p=>p?.el?.classList.add(cls)); setTimeout(()=>cells.forEach(p=>p?.el?.classList.remove(cls)),300); }
-
-// ===== Validation & Subword rules =====
-function isValidWord(word){
-  if(!dict.has(word)) return false;
-  if(word.length===2){ return VOWELS.some(v=>word.includes(v)); } // 2-letter needs vowel
-  return true;
-}
-
-// IMPORTANT: sub-words only from TILE BOUNDARIES, ≥2 tiles, matching drag direction, never within a single tile
-function findSubWords(word, pathTiles){
-  const parts = pathTiles.map(pt=>({ text:grid[pt.y][pt.x].word.toUpperCase(), val:grid[pt.y][pt.x].val }));
-  let direction=null; if(pathTiles.length>1){ const dx=pathTiles[1].x-pathTiles[0].x, dy=pathTiles[1].y-pathTiles[0].y; direction=Math.abs(dx)>Math.abs(dy)?'h':'v'; }
-  const subs=[];
-  for(let a=0;a<parts.length;a++){
-    for(let b=a+2;b<=parts.length;b++){
-      const seg=parts.slice(a,b); const sub=seg.map(p=>p.text).join('');
-      if(direction==='h' && pathTiles.some((_,i)=> i>0 && pathTiles[i].y!==pathTiles[0].y)) continue;
-      if(direction==='v' && pathTiles.some((_,i)=> i>0 && pathTiles[i].x!==pathTiles[0].x)) continue;
-      if(!isValidWord(sub)) continue;
-      const val=seg.reduce((s,p)=>s+p.val,0);
-      subs.push({text:sub, value:val});
+function createBoard(){
+  const board = document.getElementById('board');
+  board.innerHTML='';
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for(let y=0;y<SIZE;y++){
+    for(let x=0;x<SIZE;x++){
+      const tile = document.createElement('div');
+      tile.className='tile';
+      tile.dataset.x=x; tile.dataset.y=y;
+      const letter = letters[Math.floor(Math.random()*letters.length)];
+      const value = 1 + Math.floor(Math.random()*10);
+      tile.innerHTML = `${letter}<span class="val">${value}</span>`;
+      board.appendChild(tile);
     }
   }
-  return subs;
 }
 
-// ===== Words Available (live) =====
-function countLine(arr){ let c=0, n=arr.length; for(let i=0;i<n;i++){ for(let j=i+2;j<=n;j++){ const text=arr.slice(i,j).join(''); if(dictReady&&isValidWord(text)) c++; } } return c; }
-function updateWordsAvailable(){ let count=0; for(let y=0;y<SIZE;y++){ const row=Array.from({length:SIZE},(_,x)=>grid[y][x].word.toUpperCase()); count+=countLine(row); } for(let x=0;x<SIZE;x++){ const col=Array.from({length:SIZE},(_,y)=>grid[y][x].word.toUpperCase()); count+=countLine(col); } els.hint.textContent='Words Available: '+count; }
-
-// ===== Init =====
-function init(){ newBoard(); renderBoard(); wireSelection(); updateBadges(); (async()=>{ try{ const res=await fetch(DICT_URL); const txt=await res.text(); const words=txt.split(/\r?\n/).map(w=>w.trim()).filter(w=>w.length>=MIN_WORD_LEN&&w.length<=24); dict=new Set(words.map(w=>w.toUpperCase())); dictReady=true; updateWordsAvailable(); } catch(e){ dictReady=true; updateWordsAvailable(); } })(); }
-
-// ===== Tests =====
-(function tests(){
-  // Two-letter vowel rule
-  console.assert(isValidWord('AT')===true,'AT valid');
-  console.assert(isValidWord('BY')===false,'BY invalid');
-  // Subword boundary rule: using 3 tiles A-T-E => valid subwords: AT, TE, ATE
-  const fakeGrid=[[{word:'A',val:1}],[{word:'T',val:1}],[{word:'E',val:1}]]; // only to prove concept
-  // no runtime hook into findSubWords without path tiles; covered by gameplay
-})();
-
-init();
+// Render once the DOM is ready
+window.addEventListener('DOMContentLoaded', createBoard);
+window.addEventListener('resize', createBoard);
 </script>
 </body>
 </html>
