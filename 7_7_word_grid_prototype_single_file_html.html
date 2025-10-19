@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>7×7 Word Grid — Rebuild (Tile‑Boundary Scoring + Weighted Letters)</title>
+<title>7×7 Word Grid — Single Tile Update (Preserve Full Word)</title>
 <style>
   html, body {height:100%;margin:0;padding:0}
   body {background:#0f1115;color:#e9ecf1;font-family:system-ui,Segoe UI,Roboto,Inter,sans-serif;display:flex;flex-direction:column;align-items:center;gap:.6rem;overflow:auto}
@@ -12,10 +12,10 @@
   .badge {background:#1b2131;border:1px solid #2a3146;padding:2px 10px;border-radius:999px;color:#9aa3b2;font-size:.85rem}
   .controls {display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center}
   button {padding:8px 12px;border:none;border-radius:8px;background:#213056;color:#e9ecf1;cursor:pointer}
-  #currentWord {white-space:pre-line;color:#7aa2ff;font-size:.9rem;text-align:left;background:#151821;border:1px solid #2a3146;border-radius:10px;padding:.6rem;width:min(700px,92%);min-height:6rem;max-height:9rem;overflow:auto}
+  #currentWord {color:#7aa2ff;font-size:.9rem;text-align:left;background:#151821;border:1px solid #2a3146;border-radius:10px;padding:.6rem;width:min(700px,92%);min-height:3rem;max-height:6rem;overflow-y:auto}
   .board-wrapper {flex-grow:1;display:flex;align-items:center;justify-content:center;width:100%;max-width:740px;padding:10px;box-sizing:border-box}
   .board {display:grid;grid-template-columns:repeat(7,1fr);gap:6px;width:min(94vmin,700px);aspect-ratio:1;touch-action:none}
-  .tile {position:relative;display:flex;align-items:center;justify-content:center;background:#222639;border:1px solid #2a3146;border-radius:12px;user-select:none;overflow:hidden;text-align:center;line-height:1.1;cursor:pointer;font-weight:800;font-size:clamp(18px,6vmin,36px)}
+  .tile {position:relative;display:flex;align-items:center;justify-content:center;background:#222639;border:1px solid #2a3146;border-radius:12px;user-select:none;overflow:hidden;text-align:center;line-height:1.1;cursor:pointer;font-weight:800;padding:1px}
   .tile .val {position:absolute;right:6px;bottom:4px;font-size:clamp(10px,3vmin,16px);color:#9aa3b2}
   .tile.selected{background:#2d6cdf}
   .tile.valid{background:#28a745}
@@ -37,9 +37,6 @@
   <div class="board-wrapper"><div class="board" id="board" aria-label="7 by 7 letter grid"></div></div>
 
 <script>
-/********************
- * CONFIG & STATE
- ********************/
 const SIZE=7, MIN_WORD_LEN=2;
 let grid=[], score=0, bestPlay=0, bestPlayWord='';
 let dict=new Set(['AT','TO','IN','ON','BY','MY','OF','CAT','DOG','HAT','RAT','STAR','START','STONE','TONE','ONE','LATE','EAT','TEA','ATE']);
@@ -47,235 +44,56 @@ let dictReady=false;
 const DICT_URL='https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt';
 const TWO_LETTER_VOWELS=['A','E','I','O','U','Y'];
 
-// Weighted letter frequency (rough English frequency, integer weights)
-const LETTER_WEIGHTS=[
-  ['E',12],['T',9],['A',8],['O',7],['I',7],['N',7],
-  ['S',6],['H',6],['R',6],['D',4],['L',4],['C',3],['U',3],
-  ['M',2],['W',2],['F',2],['G',2],['Y',2],['P',2],
-  ['B',1],['V',1],['K',1],['J',1],['X',1],['Q',1],['Z',1]
-];
-const WEIGHT_SUM = LETTER_WEIGHTS.reduce((a,b)=>a+b[1],0);
+const LETTER_WEIGHTS=[['E',12],['T',9],['A',8],['O',7],['I',7],['N',7],['S',6],['H',6],['R',6],['D',4],['L',4],['C',3],['U',3],['M',2],['W',2],['F',2],['G',2],['Y',2],['P',2],['B',1],['V',1],['K',1],['J',1],['X',1],['Q',1],['Z',1]];
+const WEIGHT_SUM=LETTER_WEIGHTS.reduce((a,b)=>a+b[1],0);
+const LETTER_VALUES={E:1,A:1,I:1,O:1,N:1,R:1,T:1,L:1,S:1,U:1,D:2,G:2,B:3,C:3,M:3,P:3,F:4,H:4,V:4,W:4,Y:4,K:5,J:8,X:8,Q:10,Z:10};
 
-// Letter values (Scrabble-like; tweakable)
-const LETTER_VALUES={
-  E:1,A:1,I:1,O:1,N:1,R:1,T:1,L:1,S:1,U:1,
-  D:2,G:2,
-  B:3,C:3,M:3,P:3,
-  F:4,H:4,V:4,W:4,Y:4,
-  K:5,
-  J:8,X:8,
-  Q:10,Z:10
-};
+const els={board:document.getElementById('board'),score:document.getElementById('score'),wordsAvail:document.getElementById('wordsAvail'),bestWord:document.getElementById('bestWord'),current:document.getElementById('currentWord'),newGame:document.getElementById('newGame'),giveUp:document.getElementById('giveup')};
 
-const els={
-  board:document.getElementById('board'),
-  score:document.getElementById('score'),
-  wordsAvail:document.getElementById('wordsAvail'),
-  bestWord:document.getElementById('bestWord'),
-  current:document.getElementById('currentWord'),
-  newGame:document.getElementById('newGame'),
-  giveUp:document.getElementById('giveup')
-};
-
-/********************
- * UTILS
- ********************/
-function randLetter(){
-  let r=Math.random()*WEIGHT_SUM;
-  for(const [ch,w] of LETTER_WEIGHTS){ if(r<w) return ch; r-=w; }
-  return 'E';
-}
-function randTile(){
-  const ch=randLetter();
-  const val=LETTER_VALUES[ch]||1;
-  return {word:ch, val};
-}
+function randLetter(){let r=Math.random()*WEIGHT_SUM;for(const[ch,w]of LETTER_WEIGHTS){if(r<w)return ch;r-=w;}return'E';}
+function randTile(){const ch=randLetter();const val=LETTER_VALUES[ch]||1;return{word:ch,val};}
 function inBounds(x,y){return x>=0&&x<SIZE&&y>=0&&y<SIZE;}
-function updateBadges(){ els.score.textContent='Score: '+score; els.bestWord.textContent = bestPlay>0?`Best word: ${bestPlayWord} (${bestPlay})`:'Best word: —'; }
-function isValidWord(word){
-  const W=word.toUpperCase();
-  if(!dictReady && !dict.size) return false; // safety
-  if(!dict.has(W)) return false;
-  if(W.length===2) return TWO_LETTER_VOWELS.some(v=>W.includes(v));
-  return true;
-}
+function updateBadges(){els.score.textContent='Score: '+score;els.bestWord.textContent=bestPlay>0?`Best word: ${bestPlayWord} (${bestPlay})`:'Best word: —';}
+function isValidWord(word){const W=word.toUpperCase();if(!dictReady&&!dict.size)return false;if(!dict.has(W))return false;if(W.length===2)return TWO_LETTER_VOWELS.some(v=>W.includes(v));return true;}
 
-/********************
- * RENDER & BOARD
- ********************/
-function newBoard(){ grid = Array.from({length:SIZE},()=>Array.from({length:SIZE},()=>randTile())); renderBoard(); updateWordsAvailable(); }
-function renderBoard(){
-  els.board.innerHTML='';
-  const boardSize=els.board.clientWidth, gap=6, tileSize=(boardSize-gap*(SIZE-1))/SIZE;
-  for(let y=0;y<SIZE;y++){
-    for(let x=0;x<SIZE;x++){
-      const t=grid[y][x];
-      const d=document.createElement('div');
-      d.className='tile'; d.dataset.x=x; d.dataset.y=y;
-      d.style.width=d.style.height=tileSize+'px';
-      d.innerHTML=`${t.word}<span class="val">${t.val}</span>`;
-      els.board.appendChild(d);
-    }
-  }
-  wireSelection();
-}
+function adjustFontSize(tile){if(!tile.firstChild)return;const padding=2;let size=tile.clientHeight*0.85;tile.style.fontSize=size+'px';let iterations=0;function fitLoop(){iterations++;const availW=Math.max(1,tile.clientWidth-padding);const availH=Math.max(1,tile.clientHeight-padding);const scaleW=availW/tile.scrollWidth;const scaleH=availH/tile.scrollHeight;const scale=Math.min(scaleW,scaleH,1)*0.97;if(scale<0.99&&iterations<10){size=Math.max(size*scale,10);tile.style.fontSize=size+'px';requestAnimationFrame(fitLoop);}}requestAnimationFrame(fitLoop);}
 
-/********************
- * WORDS AVAILABLE (LIVE)
- ********************/
-function countLine(arr){
-  let c=0; const n=arr.length;
-  for(let i=0;i<n;i++){
-    for(let j=i+2;j<=n;j++){
-      const text=arr.slice(i,j).join('');
-      if(isValidWord(text)) c++;
-    }
-  }
-  return c;
-}
-function updateWordsAvailable(){
-  let count=0;
-  // rows
-  for(let y=0;y<SIZE;y++){
-    const row = Array.from({length:SIZE},(_,x)=> grid[y][x].word.toUpperCase());
-    count += countLine(row);
-  }
-  // cols
-  for(let x=0;x<SIZE;x++){
-    const col = Array.from({length:SIZE},(_,y)=> grid[y][x].word.toUpperCase());
-    count += countLine(col);
-  }
-  els.wordsAvail.textContent='Words Available: '+count;
-}
+function newBoard(){grid=Array.from({length:SIZE},()=>Array.from({length:SIZE},()=>randTile()));renderBoard();updateWordsAvailable();}
+function renderBoard(){els.board.innerHTML='';const boardSize=els.board.clientWidth,gap=6,tileSize=(boardSize-gap*(SIZE-1))/SIZE;for(let y=0;y<SIZE;y++){for(let x=0;x<SIZE;x++){const t=grid[y][x];const d=document.createElement('div');d.className='tile';d.dataset.x=x;d.dataset.y=y;d.style.width=d.style.height=tileSize+'px';d.innerHTML=`${t.word}<span class="val">${t.val}</span>`;els.board.appendChild(d);adjustFontSize(d);}}wireSelection();}
 
-/********************
- * SELECTION (POINTER + AXIS LOCK)
- ********************/
-let dragging=false, axis=null, path=[]; // path: [{x,y,el}]
-function wireSelection(){
-  els.board.onpointerdown = (e)=>{ const t=tileFromEvent(e); if(!t) return; e.preventDefault(); startDrag(t); els.board.setPointerCapture?.(e.pointerId); };
-  window.onpointermove = (e)=>{ if(!dragging) return; const t=tileFromEvent(e); if(t) extendDrag(t); };
-  window.onpointerup = ()=>{ if(dragging) endDrag(); };
-}
-function tileFromEvent(e){ const el=document.elementFromPoint(e.clientX,e.clientY); return tileFromEl(el); }
-function tileFromEl(el){ const d=el?.closest?.('.tile'); if(!d) return null; const x=+d.dataset.x, y=+d.dataset.y; if(!inBounds(x,y)) return null; return {x,y,el:d}; }
-function startDrag(t){ dragging=true; axis=null; path=[t]; t.el.classList.add('selected'); }
-function extendDrag(t){
-  if(path.length===0) return; const last=path[path.length-1]; if(!last) return;
-  if(t.x===last.x && t.y===last.y) return;
-  if(path.some(p=>p.x===t.x && p.y===t.y)) return; // no revisit
-  if(axis===null){ if(t.x===last.x) axis='v'; else if(t.y===last.y) axis='h'; else return; }
-  if(axis==='h' && t.y!==last.y) return;
-  if(axis==='v' && t.x!==last.x) return;
-  if(Math.abs(t.x-last.x)+Math.abs(t.y-last.y)!==1) return; // must be adjacent
-  path.push(t); t.el.classList.add('selected');
-}
+function updateWordsAvailable(){let count=0;for(let y=0;y<SIZE;y++){const row=Array.from({length:SIZE},(_,x)=>grid[y][x].word.toUpperCase());count+=countLine(row);}for(let x=0;x<SIZE;x++){const col=Array.from({length:SIZE},(_,y)=>grid[y][x].word.toUpperCase());count+=countLine(col);}els.wordsAvail.textContent='Words Available: '+count;}
+function countLine(arr){let c=0;const n=arr.length;for(let i=0;i<n;i++){for(let j=i+2;j<=n;j++){const text=arr.slice(i,j).join('');if(isValidWord(text))c++;}}return c;}
 
-/********************
- * SCORING & MERGE (TILE-BOUNDARY SUBWORDS)
- ********************/
-function endDrag(){
-  if(path.length<MIN_WORD_LEN){ clearPath(); return; }
-  const draggedWord = path.map(p=>grid[p.y][p.x].word.toUpperCase()).join('');
-  if(!isValidWord(draggedWord)) { flash(path,'invalid'); clearPath(); return; }
-  const subs = tileBoundarySubwords(path);
-  if(subs.length===0){ flash(path,'invalid'); clearPath(); return; }
-  const sumSubVals = subs.reduce((a,s)=>a+s.value,0);
-  const add = sumSubVals * path.length;
-  score += add; updateBadges();
+let dragging=false,axis=null,path=[];
+function wireSelection(){els.board.onpointerdown=e=>{const t=tileFromEvent(e);if(!t)return;e.preventDefault();startDrag(t);els.board.setPointerCapture?.(e.pointerId);};window.onpointermove=e=>{if(!dragging)return;const t=tileFromEvent(e);if(!t)return;extendDrag(t);};window.onpointerup=()=>{if(dragging)endDrag();};}
+function tileFromEvent(e){if(!e||typeof e.clientX!=='number'||typeof e.clientY!=='number')return null;const el=document.elementFromPoint(e.clientX,e.clientY);if(!el)return null;return tileFromEl(el);}function tileFromEl(el){const d=el?.closest?.('.tile');if(!d)return null;const x=+d.dataset.x,y=+d.dataset.y;if(!inBounds(x,y))return null;return{x,y,el:d};}
+function startDrag(t){dragging=true;axis=null;path=[t];t.el.classList.add('selected');}
+function extendDrag(t){if(path.length===0)return;const last=path[path.length-1];if(!last)return;if(t.x===last.x&&t.y===last.y)return;if(path.some(p=>p.x===t.x&&p.y===t.y))return;if(axis===null){if(t.x===last.x)axis='v';else if(t.y===last.y)axis='h';else return;}if(axis==='h'&&t.y!==last.y)return;if(axis==='v'&&t.x!==last.x)return;if(Math.abs(t.x-last.x)+Math.abs(t.y-last.y)!==1)return;path.push(t);t.el.classList.add('selected');}
 
-  // Merge: last tile becomes draggedWord with value=sum of selected tiles
-  const totalTileSum = path.reduce((s,p)=> s + grid[p.y][p.x].val, 0);
-  const end = path[path.length-1];
-  grid[end.y][end.x] = {word:draggedWord, val: totalTileSum};
-  for(let i=0;i<path.length-1;i++){ const {x,y}=path[i]; grid[y][x] = randTile(); }
-  renderBoard();
-  const endEl = document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`); if(endEl){ endEl.classList.add('valid'); setTimeout(()=>endEl.classList.remove('valid'),300); }
-  updateWordsAvailable();
+function endDrag(){if(path.length<MIN_WORD_LEN){clearPath();return;}const draggedWord=path.map(p=>grid[p.y][p.x].word.toUpperCase()).join('');if(!isValidWord(draggedWord)){flash(path,'invalid');clearPath();return;}const subs=tileBoundarySubwords(path);if(subs.length===0){flash(path,'invalid');clearPath();return;}const sumSubVals=subs.reduce((a,s)=>a+s.value,0);const add=sumSubVals*path.length;score+=add;updateBadges();const totalTileSum=path.reduce((s,p)=>s+grid[p.y][p.x].val,0);const end=path[path.length-1];
+// Update only the affected tiles and preserve full word text
+const endTile=document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`);
+grid[end.y][end.x].word=draggedWord;
+grid[end.y][end.x].val=totalTileSum;
+endTile.dataset.letter=draggedWord;endTile.dataset.value=totalTileSum;
+endTile.innerHTML=`${grid[end.y][end.x].word}<span class="val">${grid[end.y][end.x].val}</span>`;
+adjustFontSize(endTile);
 
-  // Result panel
-  els.current.textContent = `Last word: ${draggedWord}\n`+
-    subs.map(s=>`${s.text} (${s.value})`).join('\n')+
-    `\nSum(${subs.length} subwords): ${sumSubVals}; × ${path.length} tiles = ${add} pts`;
+for(let i=0;i<path.length-1;i++){const{x,y}=path[i];const tEl=document.querySelector(`[data-x='${x}'][data-y='${y}']`);const newT=randTile();grid[y][x]=newT;tEl.dataset.letter=newT.word;tEl.dataset.value=newT.val;tEl.innerHTML=`${newT.word}<span class="val">${newT.val}</span>`;adjustFontSize(tEl);}
 
-  if(add>bestPlay){ bestPlay=add; bestPlayWord=draggedWord; updateBadges(); }
-  clearPath();
-}
+const endEl=document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`);if(endEl){endEl.classList.add('valid');setTimeout(()=>endEl.classList.remove('valid'),300);}updateWordsAvailable();const subsLine=subs.map(s=>`${s.text} (${s.value})`).join(', ');els.current.textContent=`${draggedWord}: ${subsLine}; Sum ${sumSubVals} × ${path.length} Tiles = ${add} pts`;if(add>bestPlay){bestPlay=add;bestPlayWord=draggedWord;updateBadges();}clearPath();}
 
-function clearPath(){ path.forEach(p=>p?.el?.classList.remove('selected')); path=[]; axis=null; }
-function flash(cells,cls){ cells.forEach(p=>p?.el?.classList.add(cls)); setTimeout(()=>cells.forEach(p=>p?.el?.classList.remove(cls)),300); }
+function clearPath(){path.forEach(p=>p?.el?.classList.remove('selected'));path=[];axis=null;}
+function flash(cells,cls){cells.forEach(p=>p?.el?.classList.add(cls));setTimeout(()=>cells.forEach(p=>p?.el?.classList.remove(cls)),300);}
+function tileBoundarySubwords(pathTiles){let direction=null;if(pathTiles.length>1){const dx=pathTiles[1].x-pathTiles[0].x,dy=pathTiles[1].y-pathTiles[0].y;direction=Math.abs(dx)>Math.abs(dy)?'h':'v';}const parts=pathTiles.map(p=>({text:grid[p.y][p.x].word.toUpperCase(),val:grid[p.y][p.x].val}));const subs=[];for(let a=0;a<parts.length;a++){for(let b=a+2;b<=parts.length;b++){const segment=parts.slice(a,b);const text=segment.map(q=>q.text).join('');if(!isValidWord(text))continue;if(direction==='h'&&pathTiles.some((_,i)=>i>0&&pathTiles[i].y!==pathTiles[0].y))continue;if(direction==='v'&&pathTiles.some((_,i)=>i>0&&pathTiles[i].x!==pathTiles[0].x))continue;const value=segment.reduce((s,q)=>s+q.val,0);subs.push({text,value});}}return subs;}
 
-// Build sub-words only on TILE BOUNDARIES; >=2 tiles; direction matches selection; exclude single-tile words
-function tileBoundarySubwords(pathTiles){
-  // Determine direction for sanity (axis already enforced)
-  let direction=null; if(pathTiles.length>1){ const dx=pathTiles[1].x-pathTiles[0].x, dy=pathTiles[1].y-pathTiles[0].y; direction=Math.abs(dx)>Math.abs(dy)?'h':'v'; }
-  const parts = pathTiles.map(p=>({text:grid[p.y][p.x].word.toUpperCase(), val:grid[p.y][p.x].val}));
-  const subs=[];
-  for(let a=0;a<parts.length;a++){
-    for(let b=a+2;b<=parts.length;b++){
-      const segment = parts.slice(a,b);
-      const text = segment.map(q=>q.text).join('');
-      if(!isValidWord(text)) continue;
-      // direction check (redundant but explicit)
-      if(direction==='h' && pathTiles.some((_,i)=> i>0 && pathTiles[i].y!==pathTiles[0].y)) continue;
-      if(direction==='v' && pathTiles.some((_,i)=> i>0 && pathTiles[i].x!==pathTiles[0].x)) continue;
-      const value = segment.reduce((s,q)=>s+q.val,0);
-      subs.push({text, value});
-    }
-  }
-  return subs;
-}
+els.newGame.onclick=()=>{score=0;bestPlay=0;bestPlayWord='';updateBadges();newBoard();};
+els.giveUp.onclick=()=>{const words=[];for(let y=0;y<SIZE;y++){const row=Array.from({length:SIZE},(_,x)=>grid[y][x].word.toUpperCase());words.push(...listLine(row));}for(let x=0;x<SIZE;x++){const col=Array.from({length:SIZE},(_,y)=>grid[y][x].word.toUpperCase());words.push(...listLine(col));}const unique=[...new Set(words)].sort();alert(unique.length?`Playable words (tile-boundary):\n`+unique.join(', '):'No words available.');};
+function listLine(arr){const out=[];for(let i=0;i<arr.length;i++){for(let j=i+2;j<=arr.length;j++){const w=arr.slice(i,j).join('');if(isValidWord(w))out.push(w);}}return out;}
 
-/********************
- * NEW GAME / I GIVE UP
- ********************/
-els.newGame.onclick = ()=>{ score=0; bestPlay=0; bestPlayWord=''; updateBadges(); newBoard(); };
-els.giveUp.onclick = ()=>{
-  // Show all playable words in a simple alert (could be a modal)
-  const words=[];
-  // rows
-  for(let y=0;y<SIZE;y++){
-    const row = Array.from({length:SIZE},(_,x)=> grid[y][x].word.toUpperCase());
-    words.push(...listLine(row));
-  }
-  // cols
-  for(let x=0;x<SIZE;x++){
-    const col = Array.from({length:SIZE},(_,y)=> grid[y][x].word.toUpperCase());
-    words.push(...listLine(col));
-  }
-  const unique=[...new Set(words)].sort();
-  alert(unique.length?`Playable words (tile-boundary):\n`+unique.join(', '):'No words available.');
-};
-function listLine(arr){ const out=[]; for(let i=0;i<arr.length;i++){ for(let j=i+2;j<=arr.length;j++){ const w=arr.slice(i,j).join(''); if(isValidWord(w)) out.push(w); } } return out; }
-
-/********************
- * DICTIONARY LOAD & BOOT
- ********************/
-async function loadDictionary(){
-  try{
-    const res = await fetch(DICT_URL);
-    const txt = await res.text();
-    const words = txt.split(/\r?\n/).map(w=>w.trim().toUpperCase()).filter(w=>w.length>=2 && w.length<=24);
-    dict = new Set(words);
-  }catch(e){
-    // keep fallback dict
-  } finally { dictReady=true; }
-}
-
-(async function boot(){
-  await loadDictionary();
-  newBoard();
-  updateBadges();
-})();
-
-/********************
- * TESTS (sanity)
- ********************/
-(function tests(){
-  console.assert(isValidWord('AT')===true,'AT should be valid');
-  console.assert(isValidWord('BY')===true,'BY should be valid (includes Y)');
-  console.assert(isValidWord('TV')===false,'TV should be invalid');
-})();
+async function loadDictionary(){try{const res=await fetch(DICT_URL);const txt=await res.text();const words=txt.split(/\r?\n/).map(w=>w.trim().toUpperCase()).filter(w=>w.length>=2&&w.length<=24);dict=new Set(words);}catch(e){console.warn('Dictionary fetch failed; using fallback set.');}finally{dictReady=true;}}
+(async function boot(){await loadDictionary();newBoard();updateBadges();})();
+(function tests(){console.assert(isValidWord('AT')===true,'AT should be valid');console.assert(isValidWord('BY')===true,'BY should be valid (includes Y)');console.assert(isValidWord('TV')===false,'TV should be invalid');})();
 </script>
 </body>
 </html>
