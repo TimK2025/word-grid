@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>7×7 Word Grid — Single Tile Update (Preserve Full Word)</title>
+<title>7×7 Word Grid — Fixed Tile Selection</title>
 <style>
   html, body {height:100%;margin:0;padding:0}
   body {background:#0f1115;color:#e9ecf1;font-family:system-ui,Segoe UI,Roboto,Inter,sans-serif;display:flex;flex-direction:column;align-items:center;gap:.6rem;overflow:auto}
@@ -70,18 +70,8 @@ function tileFromEvent(e){if(!e||typeof e.clientX!=='number'||typeof e.clientY!=
 function startDrag(t){dragging=true;axis=null;path=[t];t.el.classList.add('selected');}
 function extendDrag(t){if(path.length===0)return;const last=path[path.length-1];if(!last)return;if(t.x===last.x&&t.y===last.y)return;if(path.some(p=>p.x===t.x&&p.y===t.y))return;if(axis===null){if(t.x===last.x)axis='v';else if(t.y===last.y)axis='h';else return;}if(axis==='h'&&t.y!==last.y)return;if(axis==='v'&&t.x!==last.x)return;if(Math.abs(t.x-last.x)+Math.abs(t.y-last.y)!==1)return;path.push(t);t.el.classList.add('selected');}
 
-function endDrag(){if(path.length<MIN_WORD_LEN){clearPath();return;}const draggedWord=path.map(p=>grid[p.y][p.x].word.toUpperCase()).join('');if(!isValidWord(draggedWord)){flash(path,'invalid');clearPath();return;}const subs=tileBoundarySubwords(path);if(subs.length===0){flash(path,'invalid');clearPath();return;}const sumSubVals=subs.reduce((a,s)=>a+s.value,0);const add=sumSubVals*path.length;score+=add;updateBadges();const totalTileSum=path.reduce((s,p)=>s+grid[p.y][p.x].val,0);const end=path[path.length-1];
-// Update only the affected tiles and preserve full word text
-const endTile=document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`);
-grid[end.y][end.x].word=draggedWord;
-grid[end.y][end.x].val=totalTileSum;
-endTile.dataset.letter=draggedWord;endTile.dataset.value=totalTileSum;
-endTile.innerHTML=`${grid[end.y][end.x].word}<span class="val">${grid[end.y][end.x].val}</span>`;
-adjustFontSize(endTile);
-
-for(let i=0;i<path.length-1;i++){const{x,y}=path[i];const tEl=document.querySelector(`[data-x='${x}'][data-y='${y}']`);const newT=randTile();grid[y][x]=newT;tEl.dataset.letter=newT.word;tEl.dataset.value=newT.val;tEl.innerHTML=`${newT.word}<span class="val">${newT.val}</span>`;adjustFontSize(tEl);}
-
-const endEl=document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`);if(endEl){endEl.classList.add('valid');setTimeout(()=>endEl.classList.remove('valid'),300);}updateWordsAvailable();const subsLine=subs.map(s=>`${s.text} (${s.value})`).join(', ');els.current.textContent=`${draggedWord}: ${subsLine}; Sum ${sumSubVals} × ${path.length} Tiles = ${add} pts`;if(add>bestPlay){bestPlay=add;bestPlayWord=draggedWord;updateBadges();}clearPath();}
+function endDrag(){if(path.length<MIN_WORD_LEN){clearPath();return;}const draggedWord=path.map(p=>grid[p.y][p.x].word.toUpperCase()).join('');if(!isValidWord(draggedWord)){flash(path,'invalid');clearPath();return;}const subs=tileBoundarySubwords(path);if(subs.length===0){flash(path,'invalid');clearPath();return;}const sumSubVals=subs.reduce((a,s)=>a+s.value,0);const add=sumSubVals*path.length;score+=add;updateBadges();const totalTileSum=path.reduce((s,p)=>s+grid[p.y][p.x].val,0);const end=path[path.length-1];const endTile=document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`);grid[end.y][end.x].word=draggedWord;grid[end.y][end.x].val=totalTileSum;endTile.dataset.letter=draggedWord;endTile.dataset.value=totalTileSum;endTile.innerHTML=`${grid[end.y][end.x].word}<span class="val">${grid[end.y][end.x].val}</span>`;adjustFontSize(endTile);
+for(let i=0;i<path.length-1;i++){const{x,y}=path[i];const tEl=document.querySelector(`[data-x='${x}'][data-y='${y}']`);const newT=randTile();grid[y][x]=newT;tEl.dataset.letter=newT.word;tEl.dataset.value=newT.val;tEl.innerHTML=`${newT.word}<span class="val">${newT.val}</span>`;adjustFontSize(tEl);}const endEl=document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`);if(endEl){endEl.classList.add('valid');setTimeout(()=>endEl.classList.remove('valid'),300);}updateWordsAvailable();const subsLine=subs.map(s=>`${s.text} (${s.value})`).join(', ');els.current.textContent=`${draggedWord}: ${subsLine}; Sum ${sumSubVals} × ${path.length} Tiles = ${add} pts`;if(add>bestPlay){bestPlay=add;bestPlayWord=draggedWord;updateBadges();}clearPath();}
 
 function clearPath(){path.forEach(p=>p?.el?.classList.remove('selected'));path=[];axis=null;}
 function flash(cells,cls){cells.forEach(p=>p?.el?.classList.add(cls));setTimeout(()=>cells.forEach(p=>p?.el?.classList.remove(cls)),300);}
