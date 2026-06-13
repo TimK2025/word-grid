@@ -3,7 +3,7 @@
   "client_name": "Word Grid",
   "client_uri": "https://timk2025.github.io/word-grid/",
   "redirect_uris": [
-    "https://timk2025.github.io/word-grid/7_7_word_grid_prototype_single_file_html.html"
+    "https://timk2025.github.io/word-grid/"
   ],
   "scope": "atproto transition:generic",
   "grant_types": ["authorization_code", "refresh_token"],

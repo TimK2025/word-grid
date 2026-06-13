@@ -178,7 +178,7 @@ button.muted:hover { background: #222639; color: #e9ecf1; }
 // ═══════════════════════════════════════════════════════════════════
 
 const CLIENT_ID    = 'https://timk2025.github.io/word-grid/client-metadata.json'
-const REDIRECT_URI = 'https://timk2025.github.io/word-grid/7_7_word_grid_prototype_single_file_html.html'
+const REDIRECT_URI = 'https://timk2025.github.io/word-grid/'
 const COLLECTION   = 'app.wordgrid.stats'
 
 // ═══════════════════════════════════════════════════════════════════
@@ -191,30 +191,29 @@ let currentDid  = null
 let savedStats  = { highScore: 0, lastScore: 0, highWordScore: 0, highWordText: '' }
 
 async function initAuth() {
-  try {
-    // Lazy-import so a CDN hiccup doesn't block the game from loading
-    const [{ BrowserOAuthClient }, { Agent }] = await Promise.all([
-      import('https://esm.sh/@atproto/oauth-client-browser'),
-      import('https://esm.sh/@atproto/api'),
-    ])
+  let BrowserOAuthClient, Agent
 
-    oauthClient = new BrowserOAuthClient({
+  // Split import errors from runtime errors so the console is informative
+  try {
+    ;[{ BrowserOAuthClient }, { Agent }] = await Promise.all([
+      import('https://esm.sh/@atproto/oauth-client-browser?bundle'),
+      import('https://esm.sh/@atproto/api?bundle'),
+    ])
+  } catch (err) {
+    console.error('atproto library import failed:', err)
+    setAuthMsg('Auth library failed to load (see console)', 'err')
+    return
+  }
+
+  try {
+    // load() fetches + validates client-metadata.json from the server —
+    // make sure that file is committed to your repo.
+    oauthClient = await BrowserOAuthClient.load({
+      clientId:       CLIENT_ID,
       handleResolver: 'https://bsky.social',
-      clientMetadata: {
-        client_id:                  CLIENT_ID,
-        client_name:                'Word Grid',
-        redirect_uris:              [REDIRECT_URI],
-        scope:                      'atproto transition:generic',
-        grant_types:                ['authorization_code', 'refresh_token'],
-        response_types:             ['code'],
-        token_endpoint_auth_method: 'none',
-        application_type:           'web',
-        dpop_bound_access_tokens:   true,
-      },
     })
 
-    // init() detects an OAuth callback in the URL and exchanges the code,
-    // or restores a previously stored session, or returns null.
+    // init() restores an existing session or handles an OAuth callback
     const result = await oauthClient.init()
     if (result?.session) {
       agent      = new Agent(result.session)
@@ -223,8 +222,8 @@ async function initAuth() {
       await loadStats()
     }
   } catch (err) {
-    console.warn('atproto init error:', err)
-    setAuthMsg('Auth unavailable — game works offline', 'err')
+    console.error('Auth init failed:', err)
+    setAuthMsg('Auth error: ' + err.message, 'err')
   }
 }
 
