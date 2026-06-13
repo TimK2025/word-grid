@@ -235,7 +235,9 @@ async function signIn() {
   if (!handle)  { setAuthMsg('Enter your handle first', 'err'); return }
   try {
     setAuthMsg('Redirecting to Bluesky…', '')
-    await oauthClient.signIn(handle, { scope: 'atproto' })
+    await oauthClient.signIn(handle, {
+      scope: 'atproto repo:app.wordgrid.stats?action=create repo:app.wordgrid.stats?action=update repo:app.wordgrid.stats?action=read',
+    })
     // Page redirects — nothing below runs
   } catch (err) {
     setAuthMsg('Sign-in error: ' + err.message, 'err')
