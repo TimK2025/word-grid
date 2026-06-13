@@ -3,88 +3,670 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>7×7 Word Grid — Fixed Tile Selection</title>
+<title>7×7 Word Grid</title>
 <style>
-  html, body {height:100%;margin:0;padding:0}
-  body {background:#0f1115;color:#e9ecf1;font-family:system-ui,Segoe UI,Roboto,Inter,sans-serif;align-items:center;gap:.6rem;overflow:auto}
-  h1 {margin:.4rem 0;font-size:1.25rem;text-align:center}
-  .top {display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;justify-content:center}
-  .badge {background:#1b2131;border:1px solid #2a3146;padding:2px 10px;border-radius:999px;color:#9aa3b2;font-size:.85rem}
-  .controls {display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center}
-  button {padding:8px 12px;border:none;border-radius:8px;background:#213056;color:#e9ecf1;cursor:pointer}
-  #currentWord {color:#7aa2ff;font-size:.9rem;text-align:left;background:#151821;border:1px solid #2a3146;border-radius:10px;width:96%;margin:2%;min-height:3rem;max-height:6rem;overflow-y:auto;text-align:center}
-  #bestWord {width:50%;margin:5px 25%;text-align:center}
-  .board-wrapper {align-items:center;justify-content:center;width:100%;max-width:740px;box-sizing:border-box}
-  .board {display:grid;grid-template-columns:repeat(7,1fr);gap:6px;width:min(94vmin,700px);aspect-ratio:1;touch-action:none}
-  .tile {position:relative;display:flex;align-items:center;justify-content:center;background:#222639;border:1px solid #2a3146;border-radius:12px;user-select:none;overflow:hidden;text-align:center;line-height:1.1;cursor:pointer;font-weight:800;padding:1px}
-  .tile .val {position:absolute;right:6px;bottom:4px;font-size:clamp(10px,3vmin,16px);color:#9aa3b2}
-  .tile.selected{background:#2d6cdf}
-  .tile.valid{background:#28a745}
-  .tile.invalid{background:#c1272d}
+html, body { height: 100%; margin: 0; padding: 0; }
+body {
+  background: #0f1115;
+  color: #e9ecf1;
+  font-family: system-ui, Segoe UI, Roboto, Inter, sans-serif;
+  display: flex;               /* was missing */
+  flex-direction: column;
+  align-items: center;
+  gap: .6rem;
+  overflow: auto;
+  padding: 0 0 1.5rem;
+}
+h1 { margin: .6rem 0 0; font-size: 1.25rem; text-align: center; }
+
+/* ── Auth bar ── */
+.auth-bar {
+  width: 96%;
+  max-width: 740px;
+  box-sizing: border-box;
+  background: #151821;
+  border: 1px solid #2a3146;
+  border-radius: 10px;
+  padding: .45rem .75rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.auth-bar input {
+  background: #1b2131;
+  border: 1px solid #2a3146;
+  border-radius: 6px;
+  color: #e9ecf1;
+  padding: 5px 10px;
+  font-size: .82rem;
+  flex: 1;
+  min-width: 150px;
+  max-width: 240px;
+  outline: none;
+}
+.auth-bar input:focus { border-color: #2d6cdf; }
+.auth-bar input::placeholder { color: #4a5568; }
+.auth-msg { color: #9aa3b2; font-size: .8rem; flex: 1; text-align: center; min-width: 0; }
+.auth-msg.ok  { color: #34a85a; }
+.auth-msg.err { color: #c1272d; }
+
+/* ── Scores ── */
+.top { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; justify-content: center; }
+.badge {
+  background: #1b2131;
+  border: 1px solid #2a3146;
+  padding: 2px 10px;
+  border-radius: 999px;
+  color: #9aa3b2;
+  font-size: .85rem;
+}
+
+/* ── Buttons ── */
+.controls { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+button {
+  padding: 7px 13px;
+  border: none;
+  border-radius: 8px;
+  background: #213056;
+  color: #e9ecf1;
+  cursor: pointer;
+  font-size: .82rem;
+  transition: background .12s;
+}
+button:hover  { background: #2a3d72; }
+button.muted  { background: #1b2131; border: 1px solid #2a3146; color: #9aa3b2; }
+button.muted:hover { background: #222639; color: #e9ecf1; }
+
+/* ── Current-word display ── */
+#currentWord {
+  color: #7aa2ff;
+  font-size: .88rem;
+  text-align: center;
+  background: #151821;
+  border: 1px solid #2a3146;
+  border-radius: 10px;
+  width: 96%;
+  max-width: 740px;
+  box-sizing: border-box;
+  min-height: 2.8rem;
+  max-height: 6rem;
+  overflow-y: auto;
+  padding: .45rem .6rem;
+  line-height: 1.5;
+}
+
+/* ── Board ── */
+.board-wrapper {
+  display: flex;                /* was missing */
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 740px;
+  box-sizing: border-box;
+}
+.board {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  width: min(94vmin, 700px);
+  aspect-ratio: 1;
+  touch-action: none;
+}
+.tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #222639;
+  border: 1px solid #2a3146;
+  border-radius: 12px;
+  user-select: none;
+  overflow: hidden;
+  text-align: center;
+  line-height: 1.1;
+  cursor: pointer;
+  font-weight: 800;
+  transition: background .1s;
+}
+.tile .val {
+  position: absolute;
+  right: 5px;
+  bottom: 3px;
+  font-size: clamp(8px, 2.2vmin, 13px);
+  color: #9aa3b2;
+  font-weight: 400;
+}
+.tile.selected { background: #2d6cdf; }
+.tile.valid    { background: #28a745; }
+.tile.invalid  { background: #c1272d; }
 </style>
 </head>
 <body>
-  <h1>7×7 Word Grid — Atomic Word Tiles</h1>
-  <div class="top">
-    <div id="score" class="badge">Score: 0</div>
-    <div id="wordsAvail" class="badge">Words Available: —</div>
-  </div>
-  <div id="bestWord" class="badge">Best word: —</div>
-  <div class="controls">
-    <button id="newGame">New game</button>
-    <button id="giveup">I give up</button>
-  </div>
-  <div id="currentWord">Last word: —</div>
-  <div class="board-wrapper"><div class="board" id="board" aria-label="7 by 7 letter grid"></div></div>
 
-<script>
-const SIZE=7, MIN_WORD_LEN=2;
-let grid=[], score=0, bestPlay=0, bestPlayWord='';
-let dict=new Set(['AT','TO','IN','ON','BY','MY','OF','CAT','DOG','HAT','RAT','STAR','START','STONE','TONE','ONE','LATE','EAT','TEA','ATE']);
-let dictReady=false;
-const DICT_URL='https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt';
-const TWO_LETTER_VOWELS=['A','E','I','O','U','Y'];
+<h1>7×7 Word Grid</h1>
 
-const LETTER_WEIGHTS=[['E',12],['T',9],['A',8],['O',7],['I',7],['N',7],['S',6],['H',6],['R',6],['D',4],['L',4],['C',3],['U',3],['M',2],['W',2],['F',2],['G',2],['Y',2],['P',2],['B',1],['V',1],['K',1],['J',1],['X',1],['Q',1],['Z',1]];
-const WEIGHT_SUM=LETTER_WEIGHTS.reduce((a,b)=>a+b[1],0);
-const LETTER_VALUES={E:1,A:1,I:1,O:1,N:1,R:1,T:1,L:1,S:1,U:1,D:2,G:2,B:3,C:3,M:3,P:3,F:4,H:4,V:4,W:4,Y:4,K:5,J:8,X:8,Q:10,Z:10};
+<!-- Auth bar — JS re-renders its contents on sign-in/out -->
+<div class="auth-bar" id="authBar">
+  <input id="handleInput" type="text" placeholder="you.bsky.social"
+         autocomplete="off" autocapitalize="off" spellcheck="false" />
+  <button id="signInBtn">Sign in with Bluesky</button>
+  <span class="auth-msg" id="authMsg">Sign in to save your stats</span>
+</div>
 
-const els={board:document.getElementById('board'),score:document.getElementById('score'),wordsAvail:document.getElementById('wordsAvail'),bestWord:document.getElementById('bestWord'),current:document.getElementById('currentWord'),newGame:document.getElementById('newGame'),giveUp:document.getElementById('giveup')};
+<div class="top">
+  <div id="score"      class="badge">Score: 0</div>
+  <div id="wordsAvail" class="badge">Words Available: —</div>
+</div>
+<div id="bestWord" class="badge">Best word: —</div>
 
-function randLetter(){let r=Math.random()*WEIGHT_SUM;for(const[ch,w]of LETTER_WEIGHTS){if(r<w)return ch;r-=w;}return'E';}
-function randTile(){const ch=randLetter();const val=LETTER_VALUES[ch]||1;return{word:ch,val};}
-function inBounds(x,y){return x>=0&&x<SIZE&&y>=0&&y<SIZE;}
-function updateBadges(){els.score.textContent='Score: '+score;els.bestWord.textContent=bestPlay>0?`Best word: ${bestPlayWord} (${bestPlay})`:'Best word: —';}
-function isValidWord(word){const W=word.toUpperCase();if(!dictReady&&!dict.size)return false;if(!dict.has(W))return false;if(W.length===2)return TWO_LETTER_VOWELS.some(v=>W.includes(v));return true;}
+<div class="controls">
+  <button id="newGame">New game</button>
+  <button id="giveup">I give up</button>
+</div>
 
-function adjustFontSize(tile){if(!tile.firstChild)return;const padding=0;let size=tile.clientHeight;tile.style.fontSize=size+'px';let iterations=0;function fitLoop(){iterations++;const availW=Math.max(1,tile.clientWidth-padding);const availH=Math.max(1,tile.clientHeight-padding);const scaleW=availW/tile.scrollWidth;const scaleH=availH/tile.scrollHeight;const scale=Math.min(scaleW,scaleH,1)*0.995;if(scale<0.99&&iterations<10){size=Math.max(size*scale,10);tile.style.fontSize=size+'px';requestAnimationFrame(fitLoop);}}requestAnimationFrame(fitLoop);}
+<div id="currentWord">Last word: —</div>
+<div class="board-wrapper">
+  <div class="board" id="board" aria-label="7 by 7 letter grid"></div>
+</div>
 
-function newBoard(){grid=Array.from({length:SIZE},()=>Array.from({length:SIZE},()=>randTile()));renderBoard();updateWordsAvailable();}
-function renderBoard(){els.board.innerHTML='';const boardSize=els.board.clientWidth,gap=6,tileSize=(boardSize-gap*(SIZE-1))/SIZE-1;for(let y=0;y<SIZE;y++){for(let x=0;x<SIZE;x++){const t=grid[y][x];const d=document.createElement('div');d.className='tile';d.dataset.x=x;d.dataset.y=y;d.style.width=d.style.height=tileSize+'px';d.innerHTML=`${t.word}<span class="val">${t.val}</span>`;els.board.appendChild(d);adjustFontSize(d);}}wireSelection();}
+<script type="module">
 
-function updateWordsAvailable(){let count=0;for(let y=0;y<SIZE;y++){const row=Array.from({length:SIZE},(_,x)=>grid[y][x].word.toUpperCase());count+=countLine(row);}for(let x=0;x<SIZE;x++){const col=Array.from({length:SIZE},(_,y)=>grid[y][x].word.toUpperCase());count+=countLine(col);}els.wordsAvail.textContent='Words Available: '+count;}
-function countLine(arr){let c=0;const n=arr.length;for(let i=0;i<n;i++){for(let j=i+2;j<=n;j++){const text=arr.slice(i,j).join('');if(isValidWord(text))c++;}}return c;}
+// ═══════════════════════════════════════════════════════════════════
+// Config
+// ═══════════════════════════════════════════════════════════════════
 
-let dragging=false,axis=null,path=[];
-function wireSelection(){els.board.onpointerdown=e=>{const t=tileFromEvent(e);if(!t)return;e.preventDefault();startDrag(t);els.board.setPointerCapture?.(e.pointerId);};window.onpointermove=e=>{if(!dragging)return;const t=tileFromEvent(e);if(!t)return;extendDrag(t);};window.onpointerup=()=>{if(dragging)endDrag();};}
-function tileFromEvent(e){if(!e||typeof e.clientX!=='number'||typeof e.clientY!=='number')return null;const el=document.elementFromPoint(e.clientX,e.clientY);if(!el)return null;return tileFromEl(el);}function tileFromEl(el){const d=el?.closest?.('.tile');if(!d)return null;const x=+d.dataset.x,y=+d.dataset.y;if(!inBounds(x,y))return null;return{x,y,el:d};}
-function startDrag(t){dragging=true;axis=null;path=[t];t.el.classList.add('selected');}
-function extendDrag(t){if(path.length===0)return;const last=path[path.length-1];if(!last)return;if(t.x===last.x&&t.y===last.y)return;if(path.some(p=>p.x===t.x&&p.y===t.y))return;if(axis===null){if(t.x===last.x)axis='v';else if(t.y===last.y)axis='h';else return;}if(axis==='h'&&t.y!==last.y)return;if(axis==='v'&&t.x!==last.x)return;if(Math.abs(t.x-last.x)+Math.abs(t.y-last.y)!==1)return;path.push(t);t.el.classList.add('selected');}
+const CLIENT_ID    = 'https://timk2025.github.io/word-grid/client-metadata.json'
+const REDIRECT_URI = 'https://timk2025.github.io/word-grid/7_7_word_grid_prototype_single_file_html.html'
+const COLLECTION   = 'app.wordgrid.stats'
 
-function endDrag(){if(path.length<MIN_WORD_LEN){clearPath();return;}const draggedWord=path.map(p=>grid[p.y][p.x].word.toUpperCase()).join('');if(!isValidWord(draggedWord)){flash(path,'invalid');clearPath();return;}const subs=tileBoundarySubwords(path);if(subs.length===0){flash(path,'invalid');clearPath();return;}const sumSubVals=subs.reduce((a,s)=>a+s.value,0);const add=sumSubVals*path.length;score+=add;updateBadges();const totalTileSum=path.reduce((s,p)=>s+grid[p.y][p.x].val,0);const end=path[path.length-1];const endTile=document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`);grid[end.y][end.x].word=draggedWord;grid[end.y][end.x].val=totalTileSum;endTile.dataset.letter=draggedWord;endTile.dataset.value=totalTileSum;endTile.innerHTML=`${grid[end.y][end.x].word}<span class="val">${grid[end.y][end.x].val}</span>`;adjustFontSize(endTile);
-for(let i=0;i<path.length-1;i++){const{x,y}=path[i];const tEl=document.querySelector(`[data-x='${x}'][data-y='${y}']`);const newT=randTile();grid[y][x]=newT;tEl.dataset.letter=newT.word;tEl.dataset.value=newT.val;tEl.innerHTML=`${newT.word}<span class="val">${newT.val}</span>`;adjustFontSize(tEl);}const endEl=document.querySelector(`[data-x='${end.x}'][data-y='${end.y}']`);if(endEl){endEl.classList.add('valid');setTimeout(()=>endEl.classList.remove('valid'),300);}updateWordsAvailable();const subsLine=subs.map(s=>`${s.text} (${s.value})`).join(', ');els.current.textContent=`${draggedWord}: ${subsLine}; Sum ${sumSubVals} × ${path.length} Tiles = ${add} pts`;if(add>bestPlay){bestPlay=add;bestPlayWord=draggedWord;updateBadges();}clearPath();}
+// ═══════════════════════════════════════════════════════════════════
+// Auth state
+// ═══════════════════════════════════════════════════════════════════
 
-function clearPath(){path.forEach(p=>p?.el?.classList.remove('selected'));path=[];axis=null;}
-function flash(cells,cls){cells.forEach(p=>p?.el?.classList.add(cls));setTimeout(()=>cells.forEach(p=>p?.el?.classList.remove(cls)),300);}
-function tileBoundarySubwords(pathTiles){let direction=null;if(pathTiles.length>1){const dx=pathTiles[1].x-pathTiles[0].x,dy=pathTiles[1].y-pathTiles[0].y;direction=Math.abs(dx)>Math.abs(dy)?'h':'v';}const parts=pathTiles.map(p=>({text:grid[p.y][p.x].word.toUpperCase(),val:grid[p.y][p.x].val}));const subs=[];for(let a=0;a<parts.length;a++){for(let b=a+2;b<=parts.length;b++){const segment=parts.slice(a,b);const text=segment.map(q=>q.text).join('');if(!isValidWord(text))continue;if(direction==='h'&&pathTiles.some((_,i)=>i>0&&pathTiles[i].y!==pathTiles[0].y))continue;if(direction==='v'&&pathTiles.some((_,i)=>i>0&&pathTiles[i].x!==pathTiles[0].x))continue;const value=segment.reduce((s,q)=>s+q.val,0);subs.push({text,value});}}return subs;}
+let oauthClient = null
+let agent       = null
+let currentDid  = null
+let savedStats  = { highScore: 0, lastScore: 0, highWordScore: 0, highWordText: '' }
 
-els.newGame.onclick=()=>{score=0;bestPlay=0;bestPlayWord='';updateBadges();newBoard();};
-els.giveUp.onclick=()=>{const words=[];for(let y=0;y<SIZE;y++){const row=Array.from({length:SIZE},(_,x)=>grid[y][x].word.toUpperCase());words.push(...listLine(row));}for(let x=0;x<SIZE;x++){const col=Array.from({length:SIZE},(_,y)=>grid[y][x].word.toUpperCase());words.push(...listLine(col));}const unique=[...new Set(words)].sort();alert(unique.length?`Playable words (tile-boundary):\n`+unique.join(', '):'No words available.');};
-function listLine(arr){const out=[];for(let i=0;i<arr.length;i++){for(let j=i+2;j<=arr.length;j++){const w=arr.slice(i,j).join('');if(isValidWord(w))out.push(w);}}return out;}
+async function initAuth() {
+  try {
+    // Lazy-import so a CDN hiccup doesn't block the game from loading
+    const [{ BrowserOAuthClient }, { Agent }] = await Promise.all([
+      import('https://esm.sh/@atproto/oauth-client-browser'),
+      import('https://esm.sh/@atproto/api'),
+    ])
 
-async function loadDictionary(){try{const res=await fetch(DICT_URL);const txt=await res.text();const words=txt.split(/\r?\n/).map(w=>w.trim().toUpperCase()).filter(w=>w.length>=2&&w.length<=24);dict=new Set(words);}catch(e){console.warn('Dictionary fetch failed; using fallback set.');}finally{dictReady=true;}}
-(async function boot(){await loadDictionary();newBoard();updateBadges();})();
-(function tests(){console.assert(isValidWord('AT')===true,'AT should be valid');console.assert(isValidWord('BY')===true,'BY should be valid (includes Y)');console.assert(isValidWord('TV')===false,'TV should be invalid');})();
+    oauthClient = new BrowserOAuthClient({
+      handleResolver: 'https://bsky.social',
+      clientMetadata: {
+        client_id:                  CLIENT_ID,
+        client_name:                'Word Grid',
+        redirect_uris:              [REDIRECT_URI],
+        scope:                      'atproto transition:generic',
+        grant_types:                ['authorization_code', 'refresh_token'],
+        response_types:             ['code'],
+        token_endpoint_auth_method: 'none',
+        application_type:           'web',
+        dpop_bound_access_tokens:   true,
+      },
+    })
+
+    // init() detects an OAuth callback in the URL and exchanges the code,
+    // or restores a previously stored session, or returns null.
+    const result = await oauthClient.init()
+    if (result?.session) {
+      agent      = new Agent(result.session)
+      currentDid = result.session.did
+      setAuthSignedIn(currentDid)
+      await loadStats()
+    }
+  } catch (err) {
+    console.warn('atproto init error:', err)
+    setAuthMsg('Auth unavailable — game works offline', 'err')
+  }
+}
+
+async function signIn() {
+  if (!oauthClient) { setAuthMsg('Auth not ready yet', 'err'); return }
+  const handle = document.getElementById('handleInput')?.value?.trim()
+  if (!handle)  { setAuthMsg('Enter your handle first', 'err'); return }
+  try {
+    setAuthMsg('Redirecting to Bluesky…', '')
+    await oauthClient.signIn(handle, { scope: 'atproto transition:generic' })
+    // Page redirects — nothing below runs
+  } catch (err) {
+    setAuthMsg('Sign-in error: ' + err.message, 'err')
+  }
+}
+
+async function signOut() {
+  try { await oauthClient?.revoke?.(currentDid) } catch {}
+  agent = null; currentDid = null
+  savedStats = { highScore: 0, lastScore: 0, highWordScore: 0, highWordText: '' }
+  setAuthSignedOut()
+}
+
+// ── Stats ──────────────────────────────────────────────────────────
+
+async function loadStats() {
+  if (!agent || !currentDid) return
+  try {
+    const { data } = await agent.com.atproto.repo.getRecord({
+      repo:       currentDid,
+      collection: COLLECTION,
+      rkey:       'self',
+    })
+    savedStats = { ...savedStats, ...data.value }
+    setAuthMsg(
+      `Best: ${savedStats.highScore} pts · Best word: ${savedStats.highWordText || '—'} (${savedStats.highWordScore})`,
+      'ok'
+    )
+  } catch {
+    // No record yet — first time playing
+    setAuthMsg('No stats saved yet — play to save!', '')
+  }
+}
+
+async function saveStats() {
+  if (!agent || !currentDid) return
+  const record = {
+    $type:         COLLECTION,
+    highScore:     Math.max(savedStats.highScore     || 0, score),
+    lastScore:     score,
+    highWordScore: Math.max(savedStats.highWordScore || 0, bestPlay),
+    highWordText:  bestPlay > (savedStats.highWordScore || 0)
+                     ? bestPlayWord
+                     : (savedStats.highWordText || ''),
+    updatedAt:     new Date().toISOString(),
+  }
+  try {
+    await agent.com.atproto.repo.putRecord({
+      repo:       currentDid,
+      collection: COLLECTION,
+      rkey:       'self',
+      record,
+    })
+    savedStats = record
+    setAuthMsg(
+      `Saved ✓  Best: ${record.highScore} pts · ${record.highWordText || '—'} (${record.highWordScore})`,
+      'ok'
+    )
+  } catch (err) {
+    setAuthMsg('Save failed: ' + err.message, 'err')
+    console.error('saveStats failed:', err)
+  }
+}
+
+// ── Auth UI helpers ────────────────────────────────────────────────
+
+function setAuthSignedIn(did) {
+  const label = did.startsWith('did:') ? did.slice(0, 22) + '…' : did
+  document.getElementById('authBar').innerHTML = `
+    <span class="auth-msg ok" id="authMsg">Signed in: ${label}</span>
+    <button class="muted" id="signOutBtn">Sign out</button>
+  `
+  document.getElementById('signOutBtn').onclick = signOut
+}
+
+function setAuthSignedOut() {
+  document.getElementById('authBar').innerHTML = `
+    <input id="handleInput" type="text" placeholder="you.bsky.social"
+           autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button id="signInBtn">Sign in with Bluesky</button>
+    <span class="auth-msg" id="authMsg">Sign in to save your stats</span>
+  `
+  document.getElementById('signInBtn').onclick = signIn
+}
+
+function setAuthMsg(text, type) {
+  const el = document.getElementById('authMsg')
+  if (!el) return
+  el.textContent = text
+  el.className = 'auth-msg' + (type ? ' ' + type : '')
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Game constants
+// ═══════════════════════════════════════════════════════════════════
+
+const SIZE    = 7
+const MIN_LEN = 2
+
+const LETTER_WEIGHTS = [
+  ['E',12],['T',9],['A',8],['O',7],['I',7],['N',7],['S',6],
+  ['H',6],['R',6],['D',4],['L',4],['C',3],['U',3],['M',2],
+  ['W',2],['F',2],['G',2],['Y',2],['P',2],['B',1],['V',1],
+  ['K',1],['J',1],['X',1],['Q',1],['Z',1],
+]
+const WEIGHT_SUM = LETTER_WEIGHTS.reduce((a, [, w]) => a + w, 0)
+
+const LETTER_VALUES = {
+  E:1,A:1,I:1,O:1,N:1,R:1,T:1,L:1,S:1,U:1,
+  D:2,G:2,B:3,C:3,M:3,P:3,F:4,H:4,V:4,W:4,Y:4,K:5,J:8,X:8,Q:10,Z:10,
+}
+
+const TWO_LETTER_OK = new Set(['A','E','I','O','U','Y'])
+
+const DICT_URL = 'https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt'
+
+// ═══════════════════════════════════════════════════════════════════
+// Game state
+// ═══════════════════════════════════════════════════════════════════
+
+let grid = [], score = 0, bestPlay = 0, bestPlayWord = ''
+let dict = new Set(['AT','TO','IN','ON','BY','MY','OF','CAT','DOG','HAT',
+                    'RAT','STAR','START','STONE','TONE','ONE','LATE','EAT','TEA','ATE'])
+let dictReady = false
+
+const $ = id => document.getElementById(id)
+const els = {
+  board:      $('board'),
+  score:      $('score'),
+  wordsAvail: $('wordsAvail'),
+  bestWord:   $('bestWord'),
+  current:    $('currentWord'),
+  newGame:    $('newGame'),
+  giveUp:     $('giveup'),
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tile helpers
+// ═══════════════════════════════════════════════════════════════════
+
+function randLetter() {
+  let r = Math.random() * WEIGHT_SUM
+  for (const [ch, w] of LETTER_WEIGHTS) { if (r < w) return ch; r -= w }
+  return 'E'
+}
+function randTile() {
+  const ch = randLetter()
+  return { word: ch, val: LETTER_VALUES[ch] || 1 }
+}
+function inBounds(x, y) { return x >= 0 && x < SIZE && y >= 0 && y < SIZE }
+
+function isValidWord(w) {
+  const W = w.toUpperCase()
+  if (!dict.has(W)) return false
+  if (W.length === 2) return [...W].some(c => TWO_LETTER_OK.has(c))
+  return true
+}
+
+function updateBadges() {
+  els.score.textContent   = 'Score: ' + score
+  els.bestWord.textContent = bestPlay > 0
+    ? `Best word: ${bestPlayWord} (${bestPlay})`
+    : 'Best word: —'
+}
+
+// ── Font fitting ───────────────────────────────────────────────────
+// Waits for layout before measuring so clientWidth/Height are non-zero.
+
+function fitText(tile) {
+  requestAnimationFrame(() => {
+    if (!tile.isConnected) return
+    let size = tile.clientHeight * 0.42
+    if (size < 1) return
+    tile.style.fontSize = size + 'px'
+    let iter = 0
+    function step() {
+      if (++iter > 12 || !tile.isConnected) return
+      const aw = tile.clientWidth - 10, ah = tile.clientHeight - 10
+      if (aw <= 0 || ah <= 0) return
+      const scale = Math.min(aw / tile.scrollWidth, ah / tile.scrollHeight, 1)
+      if (scale < 0.97) {
+        size = Math.max(size * scale, 6)
+        tile.style.fontSize = size + 'px'
+        requestAnimationFrame(step)
+      }
+    }
+    requestAnimationFrame(step)
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Board
+// ═══════════════════════════════════════════════════════════════════
+
+function newBoard() {
+  grid = Array.from({ length: SIZE }, () => Array.from({ length: SIZE }, randTile))
+  renderBoard()
+  updateWordsAvailable()
+}
+
+function renderBoard() {
+  els.board.innerHTML = ''
+  const bw = els.board.clientWidth, gap = 6
+  const ts = Math.floor((bw - gap * (SIZE - 1)) / SIZE) - 1
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const t = grid[y][x]
+      const d = document.createElement('div')
+      d.className = 'tile'
+      d.dataset.x = x
+      d.dataset.y = y
+      d.style.width = d.style.height = ts + 'px'
+      d.innerHTML = `${t.word}<span class="val">${t.val}</span>`
+      els.board.appendChild(d)
+      fitText(d)
+    }
+  }
+  wireBoard()
+}
+
+function tileEl(x, y) {
+  return els.board.querySelector(`[data-x='${x}'][data-y='${y}']`)
+}
+
+function setTile(x, y, t) {
+  grid[y][x] = t
+  const el = tileEl(x, y)
+  el.innerHTML = `${t.word}<span class="val">${t.val}</span>`
+  fitText(el)
+}
+
+function updateWordsAvailable() {
+  let count = 0
+  for (let y = 0; y < SIZE; y++)
+    count += countLine(Array.from({ length: SIZE }, (_, x) => grid[y][x].word.toUpperCase()))
+  for (let x = 0; x < SIZE; x++)
+    count += countLine(Array.from({ length: SIZE }, (_, y) => grid[y][x].word.toUpperCase()))
+  els.wordsAvail.textContent = 'Words Available: ' + count
+}
+
+function countLine(arr) {
+  let c = 0
+  for (let i = 0; i < arr.length; i++)
+    for (let j = i + 2; j <= arr.length; j++)
+      if (isValidWord(arr.slice(i, j).join(''))) c++
+  return c
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Drag / selection
+// ═══════════════════════════════════════════════════════════════════
+
+let dragging = false, axis = null, path = []
+
+function wireBoard() {
+  // Scope all pointer events to the board element — avoids clobbering
+  // window.onpointerup and lets multiple boards co-exist safely.
+  els.board.onpointerdown = e => {
+    const t = hitTest(e); if (!t) return
+    e.preventDefault()
+    dragging = true; axis = null; path = [t]
+    t.el.classList.add('selected')
+    els.board.setPointerCapture(e.pointerId)
+  }
+  els.board.onpointermove = e => {
+    if (!dragging) return
+    const t = hitTest(e); if (t) extendDrag(t)
+  }
+  els.board.onpointerup      = () => { if (dragging) endDrag() }
+  els.board.onpointercancel  = () => { clearPath(); dragging = false }
+}
+
+function hitTest(e) {
+  const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('.tile')
+  if (!el) return null
+  const x = +el.dataset.x, y = +el.dataset.y
+  return inBounds(x, y) ? { x, y, el } : null
+}
+
+function extendDrag(t) {
+  const last = path.at(-1); if (!last) return
+  if (t.x === last.x && t.y === last.y) return
+  if (path.some(p => p.x === t.x && p.y === t.y)) return
+  const dx = t.x - last.x, dy = t.y - last.y
+  if (axis === null) {
+    if      (dx === 0 && Math.abs(dy) === 1) axis = 'v'
+    else if (dy === 0 && Math.abs(dx) === 1) axis = 'h'
+    else return
+  } else {
+    if (axis === 'h' && (dy !== 0 || Math.abs(dx) !== 1)) return
+    if (axis === 'v' && (dx !== 0 || Math.abs(dy) !== 1)) return
+  }
+  path.push(t)
+  t.el.classList.add('selected')
+}
+
+function clearPath() {
+  path.forEach(p => p.el.classList.remove('selected'))
+  path = []; axis = null
+}
+
+function flash(cells, cls) {
+  cells.forEach(p => p.el.classList.add(cls))
+  setTimeout(() => cells.forEach(p => p.el.classList.remove(cls)), 320)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Word submission
+// ═══════════════════════════════════════════════════════════════════
+
+async function endDrag() {
+  dragging = false
+  if (path.length < MIN_LEN) { clearPath(); return }
+
+  const dragWord = path.map(p => grid[p.y][p.x].word.toUpperCase()).join('')
+  if (!isValidWord(dragWord)) { flash(path, 'invalid'); clearPath(); return }
+
+  const subs = subwords(path)
+  if (!subs.length) { flash(path, 'invalid'); clearPath(); return }
+
+  const subSum = subs.reduce((a, s) => a + s.value, 0)
+  const pts    = subSum * path.length
+  score += pts
+
+  // Merge: last tile becomes the combined word tile
+  const tileSum = path.reduce((a, p) => a + grid[p.y][p.x].val, 0)
+  const end = path.at(-1)
+  setTile(end.x, end.y, { word: dragWord, val: tileSum })
+  tileEl(end.x, end.y).classList.add('valid')
+  setTimeout(() => tileEl(end.x, end.y)?.classList.remove('valid'), 320)
+
+  // Replace consumed tiles with fresh ones
+  for (let i = 0; i < path.length - 1; i++)
+    setTile(path[i].x, path[i].y, randTile())
+
+  if (pts > bestPlay) { bestPlay = pts; bestPlayWord = dragWord }
+  updateBadges()
+  updateWordsAvailable()
+
+  const subsLine = subs.map(s => `${s.text} (${s.value})`).join(', ')
+  els.current.textContent = `${dragWord}: ${subsLine} — Sum ${subSum} × ${path.length} tiles = ${pts} pts`
+
+  clearPath()
+
+  // Save whenever a high-score record is broken
+  if (agent && (score > (savedStats.highScore || 0) || pts > (savedStats.highWordScore || 0)))
+    await saveStats()
+}
+
+function subwords(pathTiles) {
+  const parts = pathTiles.map(p => ({
+    text: grid[p.y][p.x].word.toUpperCase(),
+    val:  grid[p.y][p.x].val,
+  }))
+  const subs = []
+  for (let a = 0; a < parts.length; a++) {
+    for (let b = a + 2; b <= parts.length; b++) {
+      const seg  = parts.slice(a, b)
+      const text = seg.map(q => q.text).join('')
+      if (isValidWord(text))
+        subs.push({ text, value: seg.reduce((s, q) => s + q.val, 0) })
+    }
+  }
+  return subs
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Button handlers
+// ═══════════════════════════════════════════════════════════════════
+
+els.newGame.onclick = async () => {
+  // Capture lastScore before resetting
+  if (agent && score > 0) await saveStats()
+  score = 0; bestPlay = 0; bestPlayWord = ''
+  updateBadges()
+  newBoard()
+}
+
+els.giveUp.onclick = () => {
+  const words = new Set()
+  for (let y = 0; y < SIZE; y++)
+    listLine(Array.from({ length: SIZE }, (_, x) => grid[y][x].word.toUpperCase()))
+      .forEach(w => words.add(w))
+  for (let x = 0; x < SIZE; x++)
+    listLine(Array.from({ length: SIZE }, (_, y) => grid[y][x].word.toUpperCase()))
+      .forEach(w => words.add(w))
+  const sorted = [...words].sort()
+  alert(sorted.length ? 'Playable words:\n' + sorted.join(', ') : 'No playable words found.')
+}
+
+document.getElementById('signInBtn').onclick = signIn
+
+function listLine(arr) {
+  const out = []
+  for (let i = 0; i < arr.length; i++)
+    for (let j = i + 2; j <= arr.length; j++) {
+      const w = arr.slice(i, j).join('')
+      if (isValidWord(w)) out.push(w)
+    }
+  return out
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Dictionary
+// ═══════════════════════════════════════════════════════════════════
+
+async function loadDictionary() {
+  try {
+    const res  = await fetch(DICT_URL)
+    const txt  = await res.text()
+    dict = new Set(
+      txt.split(/\r?\n/)
+         .map(w => w.trim().toUpperCase())
+         .filter(w => w.length >= 2 && w.length <= 24)
+    )
+  } catch {
+    console.warn('Dictionary fetch failed — using fallback word set.')
+  } finally {
+    dictReady = true
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Boot
+// ═══════════════════════════════════════════════════════════════════
+
+;(async () => {
+  await Promise.all([loadDictionary(), initAuth()])
+  newBoard()
+  updateBadges()
+})()
+
 </script>
 </body>
 </html>
