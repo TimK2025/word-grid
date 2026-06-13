@@ -213,6 +213,8 @@ async function initAuth() {
       handleResolver: 'https://bsky.social',
     })
 
+
+
     // init() restores an existing session or handles an OAuth callback
     const result = await oauthClient.init()
     if (result?.session) {
@@ -233,7 +235,7 @@ async function signIn() {
   if (!handle)  { setAuthMsg('Enter your handle first', 'err'); return }
   try {
     setAuthMsg('Redirecting to Bluesky…', '')
-    await oauthClient.signIn(handle, { scope: 'atproto transition:generic' })
+    await oauthClient.signIn(handle, { scope: 'atproto' })
     // Page redirects — nothing below runs
   } catch (err) {
     setAuthMsg('Sign-in error: ' + err.message, 'err')

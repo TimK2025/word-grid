@@ -5,7 +5,7 @@
   "redirect_uris": [
     "https://timk2025.github.io/word-grid/"
   ],
-  "scope": "atproto transition:generic",
+  "scope": "atproto",
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "none",
