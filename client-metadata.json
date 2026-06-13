@@ -1,0 +1,14 @@
+{
+  "client_id": "https://timk2025.github.io/word-grid/client-metadata.json",
+  "client_name": "Word Grid",
+  "client_uri": "https://timk2025.github.io/word-grid/",
+  "redirect_uris": [
+    "https://timk2025.github.io/word-grid/7_7_word_grid_prototype_single_file_html.html"
+  ],
+  "scope": "atproto transition:generic",
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none",
+  "application_type": "web",
+  "dpop_bound_access_tokens": true
+}
